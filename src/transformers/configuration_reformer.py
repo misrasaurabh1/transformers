@@ -64,11 +64,6 @@ class ReformerConfig(PretrainedConfig):
                 A chunk size of 0 means that the feed forward layer is not chunked.
                 A chunk size of n means that the feed forward layer processes n < sequence_length embeddings at a time.
                 For more information on feed forward chunking, see `How does Feed Forward Chunking work? <../glossary.html#feed-forward-chunking>`__ .
-            chunk_size_feed_forward (:obj:`int`, optional, defaults to 0):
-                The chunk size of all feed forward layers in the residual attention blocks.
-                A chunk size of 0 means that the feed forward layer is not chunked.
-                A chunk size of n means that the feed forward layer processes n < sequence_length embeddings at a time.
-                For more information on feed forward chunking, see `How does Feed Forward Chunking work? <../glossary.html#feed-forward-chunking>`__ .
             eos_token_id (:obj:`int`, optional, defaults to 2):
                 The token id for the <EOS> token.
             feed_forward_size (:obj:`int`, optional, defaults to 512):
@@ -97,7 +92,7 @@ class ReformerConfig(PretrainedConfig):
                 Number of following neighbouring chunks to attend to in LocalSelfAttention layer in addition to itself.
             local_attention_probs_dropout_prob (:obj:`float`, optional, defaults to 0.1):
                 The dropout ratio for the attention probabilities in LocalSelfAttention.
-            lsh_chunk_length (:obj:`int`, optional, defaults to 64):
+            lsh_attn_chunk_length (:obj:`int`, optional, defaults to 64):
                 Length of chunk which attends to itself in LSHSelfAttention. Chunking reduces memory complexity from sequence length x sequence length (self attention) to chunk length x chunk length x sequence length / chunk length (chunked self attention).
             lsh_num_chunks_before (:obj:`int`, optional, defaults to 1):
                 Number of previous neighbouring chunks to attend to in LSHSelfAttention layer to itself.
@@ -125,16 +120,16 @@ class ReformerConfig(PretrainedConfig):
 
         Example::
 
-            from transformers import ReformerModel, ReformerConfig
+            >>> from transformers import ReformerModel, ReformerConfig
 
-            # Initializing a Reformer configuration
-            configuration = ReformerConfig()
+            >>> # Initializing a Reformer configuration
+            >>> configuration = ReformerConfig()
 
-            # Initializing a Reformer model
-            model = ReformerModel(configuration)
+            >>> # Initializing a Reformer model
+            >>> model = ReformerModel(configuration)
 
-            # Accessing the model configuration
-            configuration = model.config
+            >>> # Accessing the model configuration
+            >>> configuration = model.config
     """
     model_type = "reformer"
 
@@ -147,7 +142,6 @@ class ReformerConfig(PretrainedConfig):
         axial_pos_shape=[64, 64],
         axial_pos_embds_dim=[64, 192],
         chunk_size_lm_head=0,
-        chunk_size_feed_forward=0,
         eos_token_id=2,
         feed_forward_size=512,
         hash_seed=None,
@@ -202,5 +196,4 @@ class ReformerConfig(PretrainedConfig):
         self.axial_pos_embds_dim = tuple(axial_pos_embds_dim)
         self.axial_norm_std = axial_norm_std
         self.chunk_size_lm_head = chunk_size_lm_head
-        self.chunk_size_feed_forward = chunk_size_feed_forward
         self.attn_layers = attn_layers

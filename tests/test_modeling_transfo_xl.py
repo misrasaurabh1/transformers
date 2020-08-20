@@ -17,10 +17,10 @@ import random
 import unittest
 
 from transformers import is_torch_available
+from transformers.testing_utils import require_multigpu, require_torch, slow, torch_device
 
 from .test_configuration_common import ConfigTester
 from .test_modeling_common import ModelTesterMixin, ids_tensor
-from .utils import require_multigpu, require_torch, slow, torch_device
 
 
 if is_torch_available():
@@ -29,163 +29,137 @@ if is_torch_available():
     from transformers.modeling_transfo_xl import TRANSFO_XL_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
+class TransfoXLModelTester:
+    def __init__(
+        self, parent,
+    ):
+        self.parent = parent
+        self.batch_size = 14
+        self.seq_length = 7
+        self.mem_len = 30
+        self.key_length = self.seq_length + self.mem_len
+        self.clamp_len = 15
+        self.is_training = True
+        self.use_labels = True
+        self.vocab_size = 99
+        self.cutoffs = [10, 50, 80]
+        self.hidden_size = 32
+        self.d_embed = 32
+        self.num_attention_heads = 4
+        self.d_head = 8
+        self.d_inner = 128
+        self.div_val = 2
+        self.num_hidden_layers = 5
+        self.scope = None
+        self.seed = 1
+        self.eos_token_id = 0
+
+    def prepare_config_and_inputs(self):
+        input_ids_1 = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
+        input_ids_2 = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
+
+        lm_labels = None
+        if self.use_labels:
+            lm_labels = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
+
+        config = TransfoXLConfig(
+            vocab_size=self.vocab_size,
+            mem_len=self.mem_len,
+            clamp_len=self.clamp_len,
+            cutoffs=self.cutoffs,
+            d_model=self.hidden_size,
+            d_embed=self.d_embed,
+            n_head=self.num_attention_heads,
+            d_head=self.d_head,
+            d_inner=self.d_inner,
+            div_val=self.div_val,
+            n_layer=self.num_hidden_layers,
+            eos_token_id=self.eos_token_id,
+            return_dict=True,
+        )
+
+        return (config, input_ids_1, input_ids_2, lm_labels)
+
+    def set_seed(self):
+        random.seed(self.seed)
+        torch.manual_seed(self.seed)
+
+    def create_transfo_xl_model(self, config, input_ids_1, input_ids_2, lm_labels):
+        model = TransfoXLModel(config)
+        model.to(torch_device)
+        model.eval()
+
+        outputs1 = model(input_ids_1)
+        outputs2 = model(input_ids_2, outputs1["mems"])
+        outputs = {
+            "hidden_states_1": outputs1["last_hidden_state"],
+            "mems_1": outputs1["mems"],
+            "hidden_states_2": outputs2["last_hidden_state"],
+            "mems_2": outputs2["mems"],
+        }
+        return outputs
+
+    def check_transfo_xl_model_output(self, result):
+        self.parent.assertEqual(result["hidden_states_1"].shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(result["hidden_states_2"].shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertListEqual(
+            [mem.shape for mem in result["mems_1"]],
+            [(self.mem_len, self.batch_size, self.hidden_size)] * self.num_hidden_layers,
+        )
+        self.parent.assertListEqual(
+            [mem.shape for mem in result["mems_2"]],
+            [(self.mem_len, self.batch_size, self.hidden_size)] * self.num_hidden_layers,
+        )
+
+    def create_transfo_xl_lm_head(self, config, input_ids_1, input_ids_2, lm_labels):
+        model = TransfoXLLMHeadModel(config)
+        model.to(torch_device)
+        model.eval()
+
+        lm_logits_1 = model(input_ids_1)["prediction_scores"]
+        outputs1 = model(input_ids_1, labels=lm_labels)
+        lm_logits_2 = model(input_ids_2, mems=outputs1["mems"])["prediction_scores"]
+        outputs2 = model(input_ids_2, labels=lm_labels, mems=outputs1["mems"])
+
+        outputs = {
+            "loss_1": outputs1["losses"],
+            "mems_1": outputs1["mems"],
+            "lm_logits_1": lm_logits_1,
+            "loss_2": outputs2["losses"],
+            "mems_2": outputs2["mems"],
+            "lm_logits_2": lm_logits_2,
+        }
+        return outputs
+
+    def check_transfo_xl_lm_head_output(self, result):
+        self.parent.assertEqual(result["loss_1"].shape, (self.batch_size, self.seq_length - 1))
+        self.parent.assertEqual(result["lm_logits_1"].shape, (self.batch_size, self.seq_length, self.vocab_size))
+        self.parent.assertListEqual(
+            [mem.shape for mem in result["mems_1"]],
+            [(self.mem_len, self.batch_size, self.hidden_size)] * self.num_hidden_layers,
+        )
+
+        self.parent.assertEqual(result["loss_2"].shape, (self.batch_size, self.seq_length - 1))
+        self.parent.assertEqual(result["lm_logits_2"].shape, (self.batch_size, self.seq_length, self.vocab_size))
+        self.parent.assertListEqual(
+            [mem.shape for mem in result["mems_2"]],
+            [(self.mem_len, self.batch_size, self.hidden_size)] * self.num_hidden_layers,
+        )
+
+    def prepare_config_and_inputs_for_common(self):
+        config_and_inputs = self.prepare_config_and_inputs()
+        (config, input_ids_1, input_ids_2, lm_labels) = config_and_inputs
+        inputs_dict = {"input_ids": input_ids_1}
+        return config, inputs_dict
+
+
 @require_torch
 class TransfoXLModelTest(ModelTesterMixin, unittest.TestCase):
-
     all_model_classes = (TransfoXLModel, TransfoXLLMHeadModel) if is_torch_available() else ()
     all_generative_model_classes = (TransfoXLLMHeadModel,) if is_torch_available() else ()
     test_pruning = False
     test_torchscript = False
     test_resize_embeddings = True
-
-    class TransfoXLModelTester(object):
-        def __init__(
-            self,
-            parent,
-            batch_size=14,
-            seq_length=7,
-            mem_len=30,
-            clamp_len=15,
-            is_training=True,
-            use_labels=True,
-            vocab_size=99,
-            cutoffs=[10, 50, 80],
-            hidden_size=32,
-            d_embed=32,
-            num_attention_heads=4,
-            d_head=8,
-            d_inner=128,
-            div_val=2,
-            num_hidden_layers=5,
-            scope=None,
-            seed=1,
-            eos_token_id=0,
-        ):
-            self.parent = parent
-            self.batch_size = batch_size
-            self.seq_length = seq_length
-            self.mem_len = mem_len
-            self.key_length = seq_length + mem_len
-            self.clamp_len = clamp_len
-            self.is_training = is_training
-            self.use_labels = use_labels
-            self.vocab_size = vocab_size
-            self.cutoffs = cutoffs
-            self.hidden_size = hidden_size
-            self.d_embed = d_embed
-            self.num_attention_heads = num_attention_heads
-            self.d_head = d_head
-            self.d_inner = d_inner
-            self.div_val = div_val
-            self.num_hidden_layers = num_hidden_layers
-            self.scope = scope
-            self.seed = seed
-            self.eos_token_id = eos_token_id
-
-        def prepare_config_and_inputs(self):
-            input_ids_1 = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
-            input_ids_2 = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
-
-            lm_labels = None
-            if self.use_labels:
-                lm_labels = ids_tensor([self.batch_size, self.seq_length], self.vocab_size)
-
-            config = TransfoXLConfig(
-                vocab_size=self.vocab_size,
-                mem_len=self.mem_len,
-                clamp_len=self.clamp_len,
-                cutoffs=self.cutoffs,
-                d_model=self.hidden_size,
-                d_embed=self.d_embed,
-                n_head=self.num_attention_heads,
-                d_head=self.d_head,
-                d_inner=self.d_inner,
-                div_val=self.div_val,
-                n_layer=self.num_hidden_layers,
-                eos_token_id=self.eos_token_id,
-            )
-
-            return (config, input_ids_1, input_ids_2, lm_labels)
-
-        def set_seed(self):
-            random.seed(self.seed)
-            torch.manual_seed(self.seed)
-
-        def create_transfo_xl_model(self, config, input_ids_1, input_ids_2, lm_labels):
-            model = TransfoXLModel(config)
-            model.to(torch_device)
-            model.eval()
-
-            hidden_states_1, mems_1 = model(input_ids_1)
-            hidden_states_2, mems_2 = model(input_ids_2, mems_1)
-            outputs = {
-                "hidden_states_1": hidden_states_1,
-                "mems_1": mems_1,
-                "hidden_states_2": hidden_states_2,
-                "mems_2": mems_2,
-            }
-            return outputs
-
-        def check_transfo_xl_model_output(self, result):
-            self.parent.assertListEqual(
-                list(result["hidden_states_1"].size()), [self.batch_size, self.seq_length, self.hidden_size],
-            )
-            self.parent.assertListEqual(
-                list(result["hidden_states_2"].size()), [self.batch_size, self.seq_length, self.hidden_size],
-            )
-            self.parent.assertListEqual(
-                list(list(mem.size()) for mem in result["mems_1"]),
-                [[self.mem_len, self.batch_size, self.hidden_size]] * self.num_hidden_layers,
-            )
-            self.parent.assertListEqual(
-                list(list(mem.size()) for mem in result["mems_2"]),
-                [[self.mem_len, self.batch_size, self.hidden_size]] * self.num_hidden_layers,
-            )
-
-        def create_transfo_xl_lm_head(self, config, input_ids_1, input_ids_2, lm_labels):
-            model = TransfoXLLMHeadModel(config)
-            model.to(torch_device)
-            model.eval()
-
-            lm_logits_1, mems_1 = model(input_ids_1)
-            loss_1, _, mems_1 = model(input_ids_1, labels=lm_labels)
-            lm_logits_2, mems_2 = model(input_ids_2, mems=mems_1)
-            loss_2, _, mems_2 = model(input_ids_2, labels=lm_labels, mems=mems_1)
-
-            outputs = {
-                "loss_1": loss_1,
-                "mems_1": mems_1,
-                "lm_logits_1": lm_logits_1,
-                "loss_2": loss_2,
-                "mems_2": mems_2,
-                "lm_logits_2": lm_logits_2,
-            }
-            return outputs
-
-        def check_transfo_xl_lm_head_output(self, result):
-            self.parent.assertListEqual(list(result["loss_1"].size()), [self.batch_size, self.seq_length - 1])
-            self.parent.assertListEqual(
-                list(result["lm_logits_1"].size()), [self.batch_size, self.seq_length, self.vocab_size],
-            )
-            self.parent.assertListEqual(
-                list(list(mem.size()) for mem in result["mems_1"]),
-                [[self.mem_len, self.batch_size, self.hidden_size]] * self.num_hidden_layers,
-            )
-
-            self.parent.assertListEqual(list(result["loss_2"].size()), [self.batch_size, self.seq_length - 1])
-            self.parent.assertListEqual(
-                list(result["lm_logits_2"].size()), [self.batch_size, self.seq_length, self.vocab_size],
-            )
-            self.parent.assertListEqual(
-                list(list(mem.size()) for mem in result["mems_2"]),
-                [[self.mem_len, self.batch_size, self.hidden_size]] * self.num_hidden_layers,
-            )
-
-        def prepare_config_and_inputs_for_common(self):
-            config_and_inputs = self.prepare_config_and_inputs()
-            (config, input_ids_1, input_ids_2, lm_labels) = config_and_inputs
-            inputs_dict = {"input_ids": input_ids_1}
-            return config, inputs_dict
 
     def check_cutoffs_and_n_token(
         self, copied_cutoffs, layer, model_embed, model, model_class, resized_value, vocab_size
@@ -210,7 +184,7 @@ class TransfoXLModelTest(ModelTesterMixin, unittest.TestCase):
             self.assertEqual(model.crit.n_token, vocab_size + resized_value)
 
     def setUp(self):
-        self.model_tester = TransfoXLModelTest.TransfoXLModelTester(self)
+        self.model_tester = TransfoXLModelTester(self)
         self.config_tester = ConfigTester(self, config_class=TransfoXLConfig, d_embed=37)
 
     def test_config(self):
@@ -466,7 +440,6 @@ class TransfoXLModelLanguageGenerationTest(unittest.TestCase):
         #  father initially slaps him for making such an accusation , Rasputin watches as the
         #  man is chased outside and beaten . Twenty years later , Rasputin sees a vision of
         #  the Virgin Mary , prompting him to become a priest . Rasputin quickly becomes famous ,
-
         #  with people , even a bishop , begging for his blessing . <eod> </s> <eos>
 
         expected_output_ids = [
@@ -613,54 +586,77 @@ class TransfoXLModelLanguageGenerationTest(unittest.TestCase):
             0,
             33,
             1,
-            1857,
+            142,
+            1298,
+            188,
             2,
-            1,
-            1009,
+            29546,
+            113,
+            8,
+            3654,
             4,
+            1,
             1109,
-            11739,
-            4762,
-            358,
-            5,
-            25,
-            245,
-            28,
-            1110,
+            7136,
+            833,
             3,
             13,
-            1041,
+            1645,
             4,
+            29546,
+            11,
+            104,
+            7,
+            1,
+            1109,
+            532,
+            7129,
+            2,
+            10,
+            83507,
+            2,
+            1162,
+            1123,
+            2,
+            6,
+            7245,
+            10,
+            2,
+            5,
+            11,
+            104,
+            7,
+            1,
+            1109,
+            532,
+            7129,
+            2,
+            10,
             24,
-            603,
-            490,
-            2,
-            71477,
-            20098,
-            104447,
-            2,
-            20961,
-            1,
-            2604,
+            24,
+            10,
+            22,
+            10,
+            13,
+            770,
+            5863,
             4,
-            1,
-            329,
-            3,
-            0,
+            7245,
+            10,
         ]
-        #  In 1991, the remains of Russian Tsar Nicholas II and his family (
-        #  except for Alexei and Maria ) are discovered. The voice of young son,
-        #  Tsarevich Alexei Nikolaevich, narrates the remainder of the story.
-        #  1883 Western Siberia, a young Grigori Rasputin is asked by his father
-        #  and a group of men to perform magic. Rasputin has a vision and
-        #  denounces one of the men as a horse thief. Although his father initially
-        #  slaps him for making such an accusation, Rasputin watches as the man
-        #  is chased outside and beaten. Twenty years later, Rasputin sees a vision
-        #  of the Virgin Mary, prompting him to become a priest.
-        #  Rasputin quickly becomes famous, with people, even a bishop, begging for
-        #  his blessing. <unk> <unk> <eos> In the 1990s, the remains of Russian Tsar
-        # Nicholas II and his family were discovered. The voice of <unk> young son,
-        # Tsarevich Alexei Nikolaevich, narrates the remainder of the story.<eos>
+        #  In 1991, the remains of Russian Tsar Nicholas II and his family ( except for
+        #  Alexei and Maria ) are discovered. The voice of young son, Tsarevich Alexei
+        #  Nikolaevich, narrates the remainder of the story. 1883 Western Siberia, a young
+        #  Grigori Rasputin is asked by his father and a group of men to perform magic.
+        #  Rasputin has a vision and denounces one of the men as a horse thief. Although
+        #  his father initially slaps him for making such an accusation, Rasputin watches
+        #  as the man is chased outside and beaten. Twenty years later, Rasputin sees a
+        #  vision of the Virgin Mary, prompting him to become a priest. Rasputin quickly
+        #  becomes famous, with people, even a bishop, begging for his blessing. In the
+        #  early 20th century, Rasputin became a symbol of the Russian Orthodox Church.
+        #  The image of Rasputin was used in the Russian national anthem, " Nearer, My God,
+        #  to Heaven ", and was used in the Russian national anthem, " " ( " The Great Spirit
+        #  of Heaven "
 
         output_ids = model.generate(input_ids, max_length=200, do_sample=False)
         self.assertListEqual(output_ids[0].tolist(), expected_output_ids)

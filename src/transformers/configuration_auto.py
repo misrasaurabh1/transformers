@@ -30,8 +30,12 @@ from .configuration_flaubert import FLAUBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, Flau
 from .configuration_gpt2 import GPT2_PRETRAINED_CONFIG_ARCHIVE_MAP, GPT2Config
 from .configuration_longformer import LONGFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP, LongformerConfig
 from .configuration_marian import MarianConfig
+from .configuration_mbart import MBART_PRETRAINED_CONFIG_ARCHIVE_MAP, MBartConfig
+from .configuration_mobilebert import MobileBertConfig
 from .configuration_openai import OPENAI_GPT_PRETRAINED_CONFIG_ARCHIVE_MAP, OpenAIGPTConfig
+from .configuration_pegasus import PegasusConfig
 from .configuration_reformer import ReformerConfig
+from .configuration_retribert import RETRIBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, RetriBertConfig
 from .configuration_roberta import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig
 from .configuration_t5 import T5_PRETRAINED_CONFIG_ARCHIVE_MAP, T5Config
 from .configuration_transfo_xl import TRANSFO_XL_PRETRAINED_CONFIG_ARCHIVE_MAP, TransfoXLConfig
@@ -49,6 +53,7 @@ ALL_PRETRAINED_CONFIG_ARCHIVE_MAP = dict(
     for pretrained_map in [
         BERT_PRETRAINED_CONFIG_ARCHIVE_MAP,
         BART_PRETRAINED_CONFIG_ARCHIVE_MAP,
+        MBART_PRETRAINED_CONFIG_ARCHIVE_MAP,
         OPENAI_GPT_PRETRAINED_CONFIG_ARCHIVE_MAP,
         TRANSFO_XL_PRETRAINED_CONFIG_ARCHIVE_MAP,
         GPT2_PRETRAINED_CONFIG_ARCHIVE_MAP,
@@ -64,6 +69,7 @@ ALL_PRETRAINED_CONFIG_ARCHIVE_MAP = dict(
         FLAUBERT_PRETRAINED_CONFIG_ARCHIVE_MAP,
         ELECTRA_PRETRAINED_CONFIG_ARCHIVE_MAP,
         LONGFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP,
+        RETRIBERT_PRETRAINED_CONFIG_ARCHIVE_MAP,
     ]
     for key, value, in pretrained_map.items()
 )
@@ -71,12 +77,16 @@ ALL_PRETRAINED_CONFIG_ARCHIVE_MAP = dict(
 
 CONFIG_MAPPING = OrderedDict(
     [
+        ("retribert", RetriBertConfig,),
         ("t5", T5Config,),
+        ("mobilebert", MobileBertConfig,),
         ("distilbert", DistilBertConfig,),
         ("albert", AlbertConfig,),
         ("camembert", CamembertConfig,),
         ("xlm-roberta", XLMRobertaConfig,),
+        ("pegasus", PegasusConfig),
         ("marian", MarianConfig,),
+        ("mbart", MBartConfig,),
         ("bart", BartConfig,),
         ("reformer", ReformerConfig,),
         ("longformer", LongformerConfig,),
@@ -131,6 +141,7 @@ class AutoConfig:
         The configuration class to instantiate is selected
         based on the `model_type` property of the config object, or when it's missing,
         falling back to using pattern matching on the `pretrained_model_name_or_path` string:
+
             - `t5`: :class:`~transformers.T5Config` (T5 model)
             - `distilbert`: :class:`~transformers.DistilBertConfig` (DistilBERT model)
             - `albert`: :class:`~transformers.AlbertConfig` (ALBERT model)
