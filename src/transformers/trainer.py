@@ -942,7 +942,7 @@ class Trainer:
         if not self.eval_dataloader:
             self.eval_dataloader = self.get_eval_dataloader(eval_dataset)
 
-        output = self.prediction_loop(self.eval_dataloader, description="Evaluation")
+        output = self.prediction_loop(description="Evaluation")
 
         self.log(output.metrics)
 
@@ -972,9 +972,9 @@ class Trainer:
             metrics (:obj:`Dict[str, float]`, `optional`):
                 The potential dictionary of metrics (if the dataset contained labels).
         """
-        test_dataloader = self.get_test_dataloader(test_dataset)
-
-        return self.prediction_loop(test_dataloader, description="Prediction")
+        #test_dataloader = self.get_test_dataloader(test_dataset)
+        # TODO: TEST IS BROKEN
+        return self.prediction_loop(description="Prediction")
 
     def prediction_loop(
             self,
