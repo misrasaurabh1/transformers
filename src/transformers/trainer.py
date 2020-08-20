@@ -180,7 +180,7 @@ class Trainer:
         self.optimizer, self.lr_scheduler = optimizers
         self.tb_writer = tb_writer
         self.eval_dataloader = None
-        self.is_eval_dataloader_parallel = False
+        self.eval_dataloader_parallel = None
         if "prediction_loss_only" in kwargs:
             warnings.warn(
                 "Passing `prediction_loss_only` as a keyword argument is deprecated and won't be possible in a future version. Use `args.prediction_loss_only` instead.",
@@ -1016,16 +1016,15 @@ class Trainer:
         model.eval()
 
         if is_torch_tpu_available():
-            if not self.is_eval_dataloader_parallel:
-                self.eval_dataloader = pl.ParallelLoader(
+            if not self.eval_dataloader_parallel:
+                self.eval_dataloader_parallel = pl.ParallelLoader(
                     self.eval_dataloader, [self.args.device]).per_device_loader(self.args.device)
-                self.is_eval_dataloader_parallel = True
 
         if self.args.past_index >= 0:
             self._past = None
 
         samples_count = 0
-        for inputs in tqdm(self.eval_dataloader, desc=description):
+        for inputs in tqdm(self.eval_dataloader_parallel, desc=description):
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only)
             batch_size = inputs[list(inputs.keys())[0]].shape[0]
             samples_count += batch_size
@@ -1045,11 +1044,11 @@ class Trainer:
             if preds is not None:
                 preds = self.distributed_concat(preds,
                                                 num_total_examples=self.num_examples(
-                                                    self.eval_dataloader))
+                                                    self.eval_dataloader_parallel))
             if label_ids is not None:
                 label_ids = self.distributed_concat(label_ids,
                                                     num_total_examples=self.num_examples(
-                                                        self.eval_dataloader))
+                                                        self.eval_dataloader_parallel))
         elif is_torch_tpu_available():
             # tpu-comment: Get all predictions and labels from all worker shards of eval dataset
             if preds is not None:
