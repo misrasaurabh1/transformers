@@ -615,7 +615,8 @@ class Trainer:
                         self.log(logs)
 
                     if self.args.evaluate_during_training and self.global_step % self.args.eval_steps == 0:
-                        self.evaluate()
+                        ret = self.evaluate()
+                        del ret
 
                     if self.args.save_steps > 0 and self.global_step % self.args.save_steps == 0:
                         # In all cases (even distributed/parallel), self.model is always a reference
